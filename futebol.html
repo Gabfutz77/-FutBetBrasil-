@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>Jogo de Pênalti com Ranking</title>
+<style>
+  body { text-align: center; font-family: Arial, sans-serif; background: #daf0da; }
+  canvas { background: #4caf50; display: block; margin: 20px auto; border: 2px solid #333; }
+  #rankboard { margin-bottom: 10px; font-size: 20px; }
+  .stars { color: gold; font-size: 24px; }
+</style>
+</head>
+<body>
+
+<div id="rankboard">
+  Rank: <span id="rank">Amador III</span>
+  <span class="stars" id="stars">★★☆☆☆</span>
+</div>
+
+<canvas id="gameCanvas" width="600" height="400"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const ranks = [
+  "Amador III", "Amador II", "Amador I",
+  "SemiPro IV", "SemiPro III", "SemiPro II", "SemiPro I",
+  "Pro V", "Pro IV", "Pro III", "Pro II", "Pro I",
+  "Goat X", "Goat IX", "Goat VIII", "Goat VII", "Goat VI", "Goat V", "Goat IV", "Goat III", "Goat II", "Goat I"
+];
+
+let currentRankIndex = 0;
+let starsCount = 2; // 5 stars max (display 5 stars, use filled or empty)
+let consecutiveGoals = 0;
+let consecutiveMisses = 0;
+let animating = false;
+
+const golX = 100, golY = 50, golWidth = 400, golHeight = 200;
+
+let ball = { x: 300, y: 320, radius: 12 };
+let glove = { x: 300, y: 150, width: 40, height: 40, targetX: 300, targetY: 150 };
+
+function drawField() {
+  // gramado
+  ctx.fillStyle = '#4caf50';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // gol
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(golX, golY, golWidth, golHeight);
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(golX, golY, golWidth, golHeight);
+
+  // linha de chute
+  ctx.strokeStyle = '#fff';
+  ctx.beginPath();
+  ctx.moveTo(0, ball.y + ball.radius);
+  ctx.lineTo(canvas.width, ball.y + ball.radius);
+  ctx.stroke();
+}
+
+function drawBall() {
+  ctx.fillStyle = '#f00';
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.radius, 0, 2 * Math.PI);
+  ctx.fill();
+}
+
+function drawGlove() {
+  ctx.fillStyle = '#0000ff';
+  ctx.fillRect(glove.x - glove.width/2, glove.y - glove.height/2, glove.width, glove.height);
+  // desenho da luva simples
+}
+
+function drawRankBoard() {
+  const rankText = ranks[currentRankIndex];
+  document.getElementById('rank').textContent = rankText;
+
+  let starsDisplay = "";
+  for (let i=0; i<5; i++) {
+    starsDisplay += i < starsCount ? "★" : "☆";
+  }
+  document.getElementById('stars').textContent = starsDisplay;
+}
+
+// Anima o movimento da bola para a posição (destX, destY)
+function animateBall(destX, destY, callback) {
+  animating = true;
+  let frames = 30;
+  let dx = (destX - ball.x) / frames;
+  let dy = (destY - ball.y) / frames;
+
+  function step() {
+    ball.x += dx;
+    ball.y += dy;
+    frames--;
+    if (frames <= 0) {
+      animating = false;
+      if (callback) callback();
+    } else {
+      draw();
+      requestAnimationFrame(step);
+    }
+  }
+  step();
+}
+
+// Move a luva do goleiro para um ponto aleatório dentro do gol
+function moveGlove() {
+  // Goleiro tenta defender numa posição aleatória (pode melhorar para usar estratégia)
+  glove.targetX = golX + Math.random()*golWidth;
+  glove.targetY = golY + Math.random()*golHeight;
+
+  // Move a luva suavemente
+  let frames = 30;
+  let dx = (glove.targetX - glove.x) / frames;
+  let dy = (glove.targetY - glove.y) / frames;
+
+  function step() {
+    glove.x += dx;
+    glove.y += dy;
+    frames--;
+    draw();
+    if (frames > 0) {
+      requestAnimationFrame(step);
+    }
+  }
+  step();
+}
+
+// Verifica se goleiro defendeu ou gol
+function checkGoal(kickX, kickY) {
+  const dist = Math.hypot(glove.x - kickX, glove.y - kickY);
+  // Se dist menor que 40 px é defesa
+  return dist > 40;
+}
+
+function resetBall() {
+  ball.x = canvas.width/2;
+  ball.y = 320;
+  draw();
+}
+
+function onClick(event) {
+  if(animating) return; // não permite novo chute durante animação
+
+  const rect = canvas.getBoundingClientRect();
+  let clickX = event.clientX - rect.left;
+  let clickY = event.clientY - rect.top;
+
+  // só permite chutar dentro do gol
+  if(clickX < golX || clickX > golX + golWidth || clickY < golY || clickY > golY + golHeight)
+    return;
+
+  // Mover goleiro primeiro
+  moveGlove();
+
+  // Animar bola para o local
+  animateBall(clickX, clickY, () => {
+    // Após animação, checar se foi gol
+    let isGoal = checkGoal(clickX, clickY);
+    if(isGoal){
+      consecutiveGoals++;
+      consecutiveMisses = 0;
+      // Estrela a cada 2 gols seguidos
+      if(consecutiveGoals % 2 === 0){
+        starsCount++;
+        if(starsCount > 5){
+          starsCount = 1;
+          currentRankIndex++;
+          if(currentRankIndex >= ranks.length) currentRankIndex = ranks.length-1; // topo rank
+        }
+      }
+      alert("Gol!");
+    } else {
+      consecutiveMisses++;
+      consecutiveGoals = 0;
+      if(consecutiveMisses >= 3){
+        starsCount--;
+        if(starsCount < 1){
+          starsCount = 5;
+          currentRankIndex--;
+          if(currentRankIndex < 0) currentRankIndex = 0;
+        }
+      }
+      alert("Defesa do goleiro!");
+    }
+    drawRankBoard();
+    resetBall();
+  });
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawField();
+  drawBall();
+  drawGlove();
+  drawRankBoard();
+}
+
+// Inicializa o jogo
+resetBall();
+drawRankBoard();
+
+canvas.addEventListener('click', onClick);
+</script>
+</body>
+</html>
